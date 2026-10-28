@@ -1,25 +1,69 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shared Backtest | Backtest Mechanic</title><style>
-body{margin:0;background:#0b1627;color:#eaf1fc;font:15px system-ui,Arial}main{max-width:950px;margin:30px auto;padding:24px}h1{margin-bottom:5px}.muted{color:#9bb0c9}.panel{background:#14243a;border:1px solid #2b4869;border-radius:12px;padding:18px;margin:16px 0}button{padding:10px 16px;background:#247bc2;border:0;color:white;border-radius:7px;cursor:pointer;margin:4px}pre{white-space:pre-wrap;word-break:break-word;background:#081322;padding:14px;border-radius:8px;max-height:360px;overflow:auto}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.stat{padding:12px;background:#091a30;border-radius:8px}.stat strong{display:block;font-size:20px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #345;padding:7px;text-align:left}
-</style></head><body><main><h1>Backtest Mechanic · Shared Results</h1><p class="muted">Read-only historical simulation. No live broker connection.</p><div id="status" class="panel">Loading shared results…</div><div id="report" hidden><section class="panel"><h2 id="heading"></h2><p id="period" class="muted"></p><div id="metrics" class="stats"></div></section><section class="panel"><h2>Strategy vs. Buy &amp; Hold</h2><div id="benchmark" class="stats"></div></section><section class="panel"><h2>Strategy JSON</h2><button id="copy">Copy Strategy JSON</button><button id="download">Download JSON</button><pre id="json"></pre></section><section class="panel"><h2>Trade evidence</h2><div id="trades"></div></section><section class="panel"><h2>Analytics</h2><pre id="analytics"></pre></section></div></main><script>
-(async function(){
-const $=id=>document.getElementById(id);const status=$('status');
-try {
-const fragment=location.hash.slice(1);if(!fragment)throw Error('No backtest snapshot in this link.');
-const raw=atob(fragment.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-fragment.length%4)%4));
-const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
-if(!('DecompressionStream' in window))throw Error('This browser does not support compressed share links.');
-const json=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-const d=JSON.parse(json);if(d.schema!=='backtest-mechanic.share.v1')throw Error('Unrecognized share format.');
-$('heading').textContent=[d.symbol,d.timeframe].filter(Boolean).join(' · ')||'Backtest results';
-$('period').textContent=typeof d.test_period==='string'?d.test_period:JSON.stringify(d.test_period||'');
-function addStats(parent,data){if(!data||typeof data!=='object')return;for(const [k,v] of Object.entries(data)){if(v===null||typeof v==='object')continue;const box=document.createElement('div');box.className='stat';const key=document.createElement('span');key.textContent=k.replace(/_/g,' ');const val=document.createElement('strong');val.textContent=String(v);box.append(key,val);parent.append(box)}}
-addStats($('metrics'),d.results);addStats($('benchmark'),d.buy_hold);
-const strategy=typeof d.strategy==='string'?d.strategy:JSON.stringify(d.strategy||{},null,2);
-$('json').textContent=strategy;
-$('copy').onclick=()=>navigator.clipboard.writeText(strategy).then(()=>{$('copy').textContent='Copied!'}).catch(()=>alert('Select and copy the JSON below.'));
-$('download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([strategy],{type:'application/json'}));a.download='BacktestMechanic_Strategy.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-const trades=d.trades||[];if(trades.length){const table=document.createElement('table');const header=document.createElement('tr');['Entry','Exit','P&L'].forEach(x=>{const th=document.createElement('th');th.textContent=x;header.append(th)});table.append(header);trades.forEach(t=>{const row=document.createElement('tr');[t.entry_timestamp,t.exit_timestamp,t.pnl].forEach(v=>{const td=document.createElement('td');td.textContent=v==null?'':String(v);row.append(td)});table.append(row)});$('trades').append(table)}else $('trades').textContent='No trade-level data included in this snapshot.';
-$('analytics').textContent=JSON.stringify(d.analytics||{},null,2);$('report').hidden=false;status.hidden=true;
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shared Backtest | Backtest Mechanic</title>
+<style>
+:root{color-scheme:dark;--bg:#0a1525;--panel:#14243a;--edge:#29435f;--ink:#eaf1fc;--muted:#9bb0c9;--blue:#53b5fa;--green:#4fd4a0;--red:#ff7889}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px system-ui,Segoe UI,Arial}main{max-width:1160px;margin:auto;padding:24px}header{display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}h1{font-size:25px;margin:0 0 5px}h2{font-size:15px;margin:0 0 12px}.muted{color:var(--muted)}.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}.panel{background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:17px}.summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}.metric{background:#0c1c30;border:1px solid #1d3651;border-radius:9px;padding:13px;min-width:0}.metric label{display:block;color:var(--muted);font-size:12px;margin-bottom:8px}.metric strong{font-size:22px;white-space:nowrap}.positive{color:var(--green)}.negative{color:var(--red)}.plot{height:300px;position:relative}.plot svg{width:100%;height:100%;display:block}.chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.legend{display:flex;gap:15px;color:var(--muted);font-size:12px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--blue)}.dot.hold{background:var(--green)}.note{font-size:12px;color:var(--muted);margin:8px 0 0}.info{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:7px}.bottom{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.bottom p{margin:6px 0}details{margin-top:14px;background:#112138;border:1px solid var(--edge);border-radius:10px;padding:14px}summary{cursor:pointer;font-weight:650}pre{background:#081322;padding:13px;white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;border-radius:8px}button{padding:9px 13px;background:#247bc2;border:0;color:white;border-radius:7px;cursor:pointer;margin:10px 6px 0 0}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px solid #29435f;padding:8px;text-align:left}th{color:var(--muted)}.tablewrap{max-height:350px;overflow:auto}#status{margin:24px 0}footer{color:var(--muted);font-size:11px;margin-top:12px}@media(max-width:700px){main{padding:14px}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.metric strong{font-size:18px}.bottom{grid-template-columns:1fr}.plot{height:230px}}@media print{body{background:white;color:#132033;-webkit-print-color-adjust:exact;print-color-adjust:exact}main{padding:0;max-width:none}header{margin-bottom:8px}.panel,.metric{break-inside:avoid}details,button,footer{display:none!important}.plot{height:260px}.summary{margin:8px 0}.bottom{margin-top:8px}h1{font-size:22px}}
+</style></head><body><main>
+<header><div><div class="eyebrow">Backtest Mechanic / Share Results</div><h1 id="title">Shared Backtest</h1><div id="period" class="info"></div></div><div class="muted">Historical simulation · Read-only</div></header>
+<div id="status" class="panel">Loading shared results…</div>
+<div id="report" hidden>
+<section class="summary" id="metrics"></section>
+<section class="panel"><div class="chart-head"><h2>Strategy vs. Buy &amp; Hold</h2><div class="legend"><span><i class="dot"></i>Strategy</span><span id="holdLegend"><i class="dot hold"></i>Buy &amp; Hold</span></div></div><div class="plot" id="plot"></div><p class="note" id="chartNote"></p></section>
+<div class="bottom"><section class="panel"><h2>Run summary</h2><div id="runSummary"></div></section><section class="panel"><h2>Benchmark comparison</h2><div id="benchmark"></div></section></div>
+<details><summary>Strategy JSON · Copy / Download</summary><button id="copy">Copy Strategy JSON</button><button id="download">Download JSON</button><pre id="json"></pre></details>
+<details><summary id="tradeLabel">Trade evidence</summary><div class="tablewrap"><table><thead><tr><th>Entry</th><th>Exit</th><th>P&amp;L</th></tr></thead><tbody id="tradeRows"></tbody></table></div></details>
+<details><summary>Full analytics</summary><pre id="analytics"></pre></details>
+<footer>Results are a historical simulation, not a prediction of future performance. Chart is reconstructed from shared trade evidence where available.</footer>
+</div></main><script>
+(async()=>{
+const $=id=>document.getElementById(id),status=$('status');
+const number=v=>Number.isFinite(Number(v))?Number(v):null;
+const money=v=>{const n=number(v);return n===null?'—':new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(n)};
+const pct=v=>{const n=number(v);return n===null?'—':(Math.abs(n)<=1&&n!==0?n*100:n).toFixed(1)+'%'};
+const dec=(v,d=2)=>{const n=number(v);return n===null?'—':n.toFixed(d)};
+const date=v=>{if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):new Intl.DateTimeFormat('en-CA',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/Edmonton',timeZoneName:'short'}).format(d)};
+const periodDate=v=>{if(!v)return '—';const d=new Date(String(v).slice(0,10)+'T12:00:00Z');return Number.isNaN(d.getTime())?String(v):new Intl.DateTimeFormat('en-CA',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(d)};
+const safe=(o,...keys)=>{for(const k of keys){if(o&&o[k]!==undefined&&o[k]!==null)return o[k]}return null};
+const item=(name,value,klass='')=>{const el=document.createElement('div');el.className='metric';const l=document.createElement('label');l.textContent=name;const s=document.createElement('strong');s.textContent=value;s.className=klass;el.append(l,s);$('metrics').append(el)};
+const line=(target,name,value)=>{const p=document.createElement('p');const a=document.createElement('span');a.className='muted';a.textContent=name+'  ';const b=document.createElement('strong');b.textContent=value;p.append(a,b);target.append(p)};
+try{
+ const fragment=location.hash.slice(1);if(!fragment)throw Error('No shared backtest data in this URL. Open a link generated by Share Results.');
+ const raw=atob(fragment.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-fragment.length%4)%4));
+ if(!('DecompressionStream' in window))throw Error('This browser cannot decode compressed share links.');
+ const data=await new Response(new Blob([Uint8Array.from(raw,c=>c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+ const d=JSON.parse(data);if(d.schema!=='backtest-mechanic.share.v1')throw Error('Unrecognized share format.');
+ const r=d.results||{},b=d.buy_hold||{},trades=Array.isArray(d.trades)?d.trades:[];
+ $('title').textContent=[d.symbol,d.timeframe].filter(Boolean).join(' · ')||'Shared Backtest';
+ const per=d.test_period;let periodText=typeof per==='string'?per:per&&typeof per==='object'?periodDate(per.from||per.start)+' – '+periodDate(per.to||per.end):'Period not supplied';
+ const periodEl=document.createElement('span');periodEl.textContent=periodText;$('period').append(periodEl);
+ const pnl=number(safe(r,'net_pnl','total_pnl','pnl'));item('Net P&L',money(pnl),pnl<0?'negative':'positive');
+ item('Trades',String(safe(r,'trades','trade_count','total_trades')??trades.length));item('Win rate',pct(safe(r,'win_rate','winrate')));item('Max drawdown',money(safe(r,'max_drawdown','max_dd')));item('Profit factor',dec(safe(r,'profit_factor')));
+ const summary=$('runSummary');line(summary,'Symbol',d.symbol||'—');line(summary,'Timeframe',d.timeframe||'—');line(summary,'Test period',periodText);line(summary,'Shared trades',String(trades.length));
+ const bench=$('benchmark');const benchmarkPnl=safe(b,'net_pnl','total_pnl','pnl');const benchmarkReturn=safe(b,'return_pct','total_return_pct','return_percent');
+ if(benchmarkPnl!==null||benchmarkReturn!==null){line(bench,'Buy & Hold P&L',money(benchmarkPnl));if(benchmarkReturn!==null)line(bench,'Buy & Hold return',pct(benchmarkReturn));if(pnl!==null&&number(benchmarkPnl)!==null)line(bench,'Strategy advantage',money(pnl-number(benchmarkPnl)))}else line(bench,'Buy & Hold','Not included in this shared snapshot');
+ const strategy=typeof d.strategy==='string'?d.strategy:JSON.stringify(d.strategy||{},null,2);$('json').textContent=strategy;
+ $('copy').onclick=()=>navigator.clipboard.writeText(strategy).then(()=>$('copy').textContent='Copied!').catch(()=>alert('Select and copy the JSON below.'));
+ $('download').onclick=()=>{const url=URL.createObjectURL(new Blob([strategy],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='BacktestMechanic_Strategy.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ $('tradeLabel').textContent='Trade evidence · '+trades.length+' shared trades';
+ for(const t of trades){const row=document.createElement('tr');for(const val of [date(t.entry_timestamp),date(t.exit_timestamp),money(t.pnl)]){const td=document.createElement('td');td.textContent=val;row.append(td)}$('tradeRows').append(row)}
+ $('analytics').textContent=JSON.stringify(d.analytics||{},null,2);
+ // Plot realized cumulative P&L, never fabricate a benchmark series.
+ let equity=0;const points=[{x:0,y:0}];for(let i=0;i<trades.length;i++){const n=number(trades[i].pnl);if(n!==null){equity+=n;points.push({x:i+1,y:equity})}}
+ const benchmarkCurve=safe(b,'equity_curve','curve','series');let bp=[];
+ if(Array.isArray(benchmarkCurve))bp=benchmarkCurve.map((v,i)=>({x:i,y:number(typeof v==='object'?safe(v,'pnl','value','equity'):v)})).filter(v=>v.y!==null);
+ const curves=[points];if(bp.length>1)curves.push(bp);
+ const w=1000,h=290,pad={l:72,r:20,t:20,b:35};const ys=curves.flatMap(a=>a.map(v=>v.y));let lo=Math.min(...ys),hi=Math.max(...ys);if(lo===hi){lo-=1;hi+=1}const extra=(hi-lo)*.08;lo-=extra;hi+=extra;
+ const maxX=Math.max(1,...curves.flatMap(a=>a.map(v=>v.x)));const X=x=>pad.l+x/maxX*(w-pad.l-pad.r);const Y=y=>pad.t+(hi-y)/(hi-lo)*(h-pad.t-pad.b);
+ const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.setAttribute('role','img');svg.setAttribute('aria-label','Cumulative realized strategy P&L chart');
+ const node=(tag,attrs,text)=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(text!==undefined)e.textContent=text;svg.append(e);return e};
+ for(let i=0;i<=4;i++){const y=pad.t+i*(h-pad.t-pad.b)/4;node('line',{x1:pad.l,y1:y,x2:w-pad.r,y2:y,stroke:'#2b4869','stroke-width':1});node('text',{x:pad.l-10,y:y+4,fill:'#9bb0c9','font-size':12,'text-anchor':'end'},money(hi-(hi-lo)*i/4))}
+ if(lo<0&&hi>0)node('line',{x1:pad.l,y1:Y(0),x2:w-pad.r,y2:Y(0),stroke:'#66839f','stroke-dasharray':'5 5'});
+ const draw=(arr,color)=>{if(arr.length<2)return;const dpath=arr.map((v,i)=>(i?'L':'M')+X(v.x).toFixed(2)+' '+Y(v.y).toFixed(2)).join(' ');node('path',{d:dpath,stroke:color,fill:'none','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'})};
+ draw(points,'#53b5fa');if(bp.length>1)draw(bp,'#4fd4a0');$('plot').append(svg);
+ $('holdLegend').hidden=bp.length<2;
+ $('chartNote').textContent=bp.length>1?'Strategy cumulative realized P&L and provided Buy & Hold series.':'Blue line: cumulative realized P&L reconstructed from shared trades. Buy & Hold curve unavailable in this snapshot; no benchmark data has been invented.';
+ $('report').hidden=false;status.hidden=true;
 }catch(e){status.textContent='Unable to open this share link: '+e.message}
 })();
 </script></body></html>
