@@ -48,10 +48,19 @@ try{
  $('tradeLabel').textContent='Trade evidence · '+trades.length+' shared trades';
  for(const t of trades){const row=document.createElement('tr');for(const val of [date(t.entry_timestamp),date(t.exit_timestamp),money(t.pnl)]){const td=document.createElement('td');td.textContent=val;row.append(td)}$('tradeRows').append(row)}
  $('analytics').textContent=JSON.stringify(d.analytics||{},null,2);
- // Plot realized cumulative P&L, never fabricate a benchmark series.
- let equity=0;const points=[{x:0,y:0}];for(let i=0;i<trades.length;i++){const n=number(trades[i].pnl);if(n!==null){equity+=n;points.push({x:i+1,y:equity})}}
- const benchmarkCurve=safe(b,'equity_curve','curve','series');let bp=[];
- if(Array.isArray(benchmarkCurve))bp=benchmarkCurve.map((v,i)=>({x:i,y:number(typeof v==='object'?safe(v,'pnl','value','equity'):v)})).filter(v=>v.y!==null);
+ // Prefer the aligned series exported from the actual Results chart.
+ const shared=d.share_chart||{};
+ const validPair=Array.isArray(shared.strategy)&&Array.isArray(shared.buy_hold)&&shared.strategy.length>1&&shared.strategy.length===shared.buy_hold.length&&shared.strategy.every(v=>Number.isFinite(Number(v)))&&shared.buy_hold.every(v=>Number.isFinite(Number(v)));
+ let points=[],bp=[];
+ if(validPair){
+   points=shared.strategy.map((v,i)=>({x:i,y:Number(v)}));
+   bp=shared.buy_hold.map((v,i)=>({x:i,y:Number(v)}));
+ }else{
+   let equity=0;points=[{x:0,y:0}];
+   for(let i=0;i<trades.length;i++){const n=number(trades[i].pnl);if(n!==null){equity+=n;points.push({x:i+1,y:equity})}}
+   const benchmarkCurve=safe(b,'equity_curve','curve','series');
+   if(Array.isArray(benchmarkCurve))bp=benchmarkCurve.map((v,i)=>({x:i,y:number(typeof v==='object'?safe(v,'pnl','value','equity'):v)})).filter(v=>v.y!==null);
+ }
  const curves=[points];if(bp.length>1)curves.push(bp);
  const w=1000,h=290,pad={l:72,r:20,t:20,b:35};const ys=curves.flatMap(a=>a.map(v=>v.y));let lo=Math.min(...ys),hi=Math.max(...ys);if(lo===hi){lo-=1;hi+=1}const extra=(hi-lo)*.08;lo-=extra;hi+=extra;
  const maxX=Math.max(1,...curves.flatMap(a=>a.map(v=>v.x)));const X=x=>pad.l+x/maxX*(w-pad.l-pad.r);const Y=y=>pad.t+(hi-y)/(hi-lo)*(h-pad.t-pad.b);
@@ -62,7 +71,7 @@ try{
  const draw=(arr,color)=>{if(arr.length<2)return;const dpath=arr.map((v,i)=>(i?'L':'M')+X(v.x).toFixed(2)+' '+Y(v.y).toFixed(2)).join(' ');node('path',{d:dpath,stroke:color,fill:'none','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'})};
  draw(points,'#53b5fa');if(bp.length>1)draw(bp,'#4fd4a0');$('plot').append(svg);
  $('holdLegend').hidden=bp.length<2;
- $('chartNote').textContent=bp.length>1?'Strategy cumulative realized P&L and provided Buy & Hold series.':'Blue line: cumulative realized P&L reconstructed from shared trades. Buy & Hold curve unavailable in this snapshot; no benchmark data has been invented.';
+ $('chartNote').textContent=bp.length>1?'Strategy and Buy & Hold P&L from the same Results chart, on aligned historical bars.':'Blue line: cumulative realized P&L reconstructed from shared trades. Buy & Hold curve unavailable in this snapshot; no benchmark data has been invented.';
  $('report').hidden=false;status.hidden=true;
 }catch(e){status.textContent='Unable to open this share link: '+e.message}
 })();
