@@ -38,7 +38,13 @@ try{
  const per=d.test_period;let periodText=typeof per==='string'?per:per&&typeof per==='object'?periodDate(per.from||per.start)+' – '+periodDate(per.to||per.end):'Period not supplied';
  const periodEl=document.createElement('span');periodEl.textContent=periodText;$('period').append(periodEl);
  const pnl=number(safe(r,'net_pnl','total_pnl','pnl'));item('Net P&L',money(pnl),pnl<0?'negative':'positive');
- item('Trades',String(safe(r,'trades','trade_count','total_trades')??trades.length));item('Win rate',pct(safe(r,'win_rate','winrate')));item('Max drawdown',money(safe(r,'max_drawdown','max_dd')));item('Profit factor',dec(safe(r,'profit_factor')));
+ item('Trades',String(safe(r,'trades','trade_count','total_trades')??trades.length));
+  const completedTrades=trades.filter(t=>number(t.pnl)!==null);
+  const winRate=completedTrades.length?100*completedTrades.filter(t=>Number(t.pnl)>0).length/completedTrades.length:safe(r,'win_rate','winrate');
+  item('Win rate',completedTrades.length?winRate.toFixed(1)+'%':pct(winRate));
+  const maxDD=number(safe(r,'max_drawdown','max_dd'));
+  item('Max drawdown',maxDD===null?'—':money(-Math.abs(maxDD)),'negative');
+  item('Profit factor',dec(safe(r,'profit_factor')));
  const summary=$('runSummary');line(summary,'Symbol',d.symbol||'—');line(summary,'Timeframe',d.timeframe||'—');line(summary,'Test period',periodText);line(summary,'Shared trades',String(trades.length));
  const bench=$('benchmark');const benchmarkPnl=safe(b,'net_pnl','total_pnl','pnl');const benchmarkReturn=safe(b,'return_pct','total_return_pct','return_percent');
  if(benchmarkPnl!==null||benchmarkReturn!==null){line(bench,'Buy & Hold P&L',money(benchmarkPnl));if(benchmarkReturn!==null)line(bench,'Buy & Hold return',pct(benchmarkReturn));if(pnl!==null&&number(benchmarkPnl)!==null)line(bench,'Strategy advantage',money(pnl-number(benchmarkPnl)))}else line(bench,'Buy & Hold','Not included in this shared snapshot');
